@@ -1,10 +1,8 @@
 #include <Wire.h> 
-#include <MPU6050.h>
 
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
-
-MPU6050 imu;
+#include <Arduino_LSM9DS1.h>  // 🔁 Changed IMU library
 
 int repCount = 0;
 float accelZFiltered = 0;
@@ -25,18 +23,18 @@ int minRepDelay = 800; // milliseconds
 #define SCREEN_HEIGHT 64
 #define OLED_RESET -1
 
-Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, OLED_RESET);
 
 void setup() {
   Serial.begin(9600);
   Wire.begin();
-  imu.initialize();
 
-  if (imu.testConnection()) { 
-    Serial.println("IMU connected!");
-  } else {
+  // 🔁 Initialize LSM9DS1
+  if (!IMU.begin()) {
     Serial.println("IMU connection failed!");
     while (1);
+  } else {
+    Serial.println("IMU connected!");
   }
 
   // OLED init
@@ -56,10 +54,15 @@ void setup() {
 }
 
 void loop() {
-  int16_t ax, ay, az;
-  imu.getAcceleration(&ax, &ay, &az);
+  float ax, ay, az;
 
-  float accelZ = az / 16384.0;
+  // 🔁 Read acceleration from LSM9DS1
+  if (IMU.accelerationAvailable()) {
+    IMU.readAcceleration(ax, ay, az);
+  }
+
+  // Same scaling assumption (already in g's for this lib)
+  float accelZ = az;
 
   // Low-pass filter
   accelZFiltered = 0.8 * accelZFiltered + 0.2 * accelZ;
