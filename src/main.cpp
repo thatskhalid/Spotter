@@ -27,6 +27,7 @@ int minRepDelay = 1000; // I CHANGED THIS from 800, this prevents quick reps, wa
 
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET); 
 // display object called "display"
+// this DOESN'T turn on the display YET, that happens later 
 
 void setup() {
   Serial.begin(9600);
