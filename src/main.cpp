@@ -23,6 +23,8 @@ int minRepDelay = 1000; // I CHANGED THIS from 800, this prevents quick reps, wa
 #define SCREEN_HEIGHT 64
 #define OLED_RESET -1
 
+// whenever you see this word, replace it with THIS number
+
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
 void setup() {
