@@ -16,8 +16,8 @@ enum State {
 State currentState = IDLE;
 
 unsigned long lastRepTime = 0;
-int minRepDelay = 800;
-
+int minRepDelay = 1000; // I CHANGED THIS from 800, this prevents quick reps, wait at LEAST 1 sec
+ 
 // OLED setup
 #define SCREEN_WIDTH 128
 #define SCREEN_HEIGHT 64
