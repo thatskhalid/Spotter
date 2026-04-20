@@ -25,7 +25,8 @@ int minRepDelay = 1000; // I CHANGED THIS from 800, this prevents quick reps, wa
 
 // whenever you see this word, replace it with THIS number
 
-Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET); 
+// display object called "display"
 
 void setup() {
   Serial.begin(9600);
