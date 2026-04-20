@@ -1,8 +1,8 @@
-#include <Wire.h> 
+#include <Wire.h>
+#include <Arduino_BMI270_BMM150.h>
 
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
-#include <Arduino_LSM9DS1.h>  // 🔁 Changed IMU library
 
 int repCount = 0;
 float accelZFiltered = 0;
@@ -16,20 +16,20 @@ enum State {
 State currentState = IDLE;
 
 unsigned long lastRepTime = 0;
-int minRepDelay = 800; // milliseconds
+int minRepDelay = 800;
 
 // OLED setup
 #define SCREEN_WIDTH 128
 #define SCREEN_HEIGHT 64
 #define OLED_RESET -1
 
-Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, OLED_RESET);
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
 void setup() {
   Serial.begin(9600);
   Wire.begin();
 
-  // 🔁 Initialize LSM9DS1
+  // ✅ IMU init (BMI270)
   if (!IMU.begin()) {
     Serial.println("IMU connection failed!");
     while (1);
@@ -56,12 +56,11 @@ void setup() {
 void loop() {
   float ax, ay, az;
 
-  // 🔁 Read acceleration from LSM9DS1
+  // ✅ Read BMI270 acceleration
   if (IMU.accelerationAvailable()) {
     IMU.readAcceleration(ax, ay, az);
   }
 
-  // Same scaling assumption (already in g's for this lib)
   float accelZ = az;
 
   // Low-pass filter
@@ -89,7 +88,7 @@ void loop() {
           repCount++;
           lastRepTime = currentTime;
 
-          // 🔥 OLED UPDATE
+          // OLED UPDATE
           display.clearDisplay();
           display.setTextSize(2);
 
@@ -109,3 +108,41 @@ void loop() {
 
   delay(20);
 }
+
+
+
+/* 
+#include <Arduino.h>
+#include <Arduino_BMI270_BMM150.h>
+
+void setup() {
+  Serial.begin(115200);
+  delay(2000);
+
+  Serial.println("Rev2 IMU test...");
+
+  if (!IMU.begin()) {
+    Serial.println("IMU FAILED");
+    while (1);
+  }
+
+  Serial.println("IMU OK");
+}
+
+void loop() {
+  float x, y, z;
+
+  if (IMU.accelerationAvailable()) {
+    IMU.readAcceleration(x, y, z);
+
+    Serial.print(x);
+    Serial.print(",");
+    Serial.print(y);
+    Serial.print(",");
+    Serial.println(z);
+  }
+
+  delay(200);
+}
+
+*/
