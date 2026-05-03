@@ -1,252 +1,166 @@
 #include <Wire.h>
-#include <Arduino_BMI270_BMM150.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
+#include <Arduino_BMI270_BMM150.h>
 
-// -------------------- DISPLAY --------------------
 #define SCREEN_WIDTH 128
 #define SCREEN_HEIGHT 64
-#define OLED_RESET -1
-Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
-// -------------------- BUTTONS --------------------
-#define BTN_UP 2
-#define BTN_DOWN 3
-#define BTN_SELECT 4
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
 
-// -------------------- VIBRATION --------------------
-#define VIB_PIN 5
+// -------- FUNCTION PROTOTYPE (IMPORTANT for PlatformIO) --------
+void drawPage();
 
-// -------------------- STATES --------------------
-enum SystemState {
-  MENU,
-  GRACE,
-  WORKOUT,
-  REST
-};
+// Buttons
+#define BTN_NEXT 2
+#define BTN_PREV 3
+#define BTN_ACTION 4
 
-SystemState currentSystemState = MENU;
+int page = 0;
 
-// -------------------- MENU --------------------
-const char* exercises[] = {
-  "Bench Press",
-  "Shoulder Press",
-  "Bicep Curl"
-};
+// -------- IMU --------
+float ax, ay, az;
+float zFiltered = 1.0;
 
-int selectedExercise = 0;
+// -------- REP LOGIC --------
+int reps = 0;
 
-// -------------------- REP LOGIC --------------------
-int repCount = 0;
-float accelZFiltered = 0;
-
-enum RepState {
-  IDLE,
-  GOING_DOWN,
-  GOING_UP
-};
-
+enum RepState { IDLE, DOWN, UP };
 RepState repState = IDLE;
 
 unsigned long lastRepTime = 0;
-int minRepDelay = 1000;
+const int repDelay = 800;
 
-// -------------------- TIMERS --------------------
-unsigned long graceStart = 0;
-unsigned long restStart = 0;
+// -------- TIMER --------
+unsigned long workoutStart = 0;
+bool workoutActive = false;
 
-void handleButtons();
-void showMenu();
-void handleGrace();
-void handleWorkout();
-void handleRest();
+// -------- BUTTON --------
+unsigned long lastPress = 0;
 
-// -------------------- SETUP --------------------
+// ---------------- SETUP ----------------
 void setup() {
-  Serial.begin(9600);
-  Wire.begin();
+  pinMode(BTN_NEXT, INPUT_PULLUP);
+  pinMode(BTN_PREV, INPUT_PULLUP);
+  pinMode(BTN_ACTION, INPUT_PULLUP);
 
-  pinMode(BTN_UP, INPUT_PULLUP);
-  pinMode(BTN_DOWN, INPUT_PULLUP);
-  pinMode(BTN_SELECT, INPUT_PULLUP);
-
-  pinMode(VIB_PIN, OUTPUT);
+  Serial.begin(115200);
 
   if (!IMU.begin()) {
-    Serial.println("IMU failed");
     while (1);
   }
 
   if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
-    Serial.println("OLED failed");
     while (1);
   }
 
-  display.clearDisplay();
+  drawPage();
 }
 
-// -------------------- LOOP --------------------
+// ---------------- LOOP ----------------
 void loop() {
 
-  handleButtons();
+  // -------- BUTTONS --------
+  if (millis() - lastPress > 200) {
 
-  switch (currentSystemState) {
-
-    case MENU:
-      showMenu();
-      break;
-
-    case GRACE:
-      handleGrace();
-      break;
-
-    case WORKOUT:
-      handleWorkout();
-      break;
-
-    case REST:
-      handleRest();
-      break;
-  }
-}
-
-void handleButtons() {
-
-  if (digitalRead(BTN_UP) == LOW) {
-    selectedExercise--;
-    if (selectedExercise < 0) selectedExercise = 2;
-    delay(200);
-  }
-
-  if (digitalRead(BTN_DOWN) == LOW) {
-    selectedExercise++;
-    if (selectedExercise > 2) selectedExercise = 0;
-    delay(200);
-  }
-
-  if (digitalRead(BTN_SELECT) == LOW) {
-    if (currentSystemState == MENU) {
-      currentSystemState = GRACE;
-      graceStart = millis();
-      repCount = 0;
-    }
-    else if (currentSystemState == WORKOUT) {
-      currentSystemState = REST;
-      restStart = millis();
-    }
-    delay(200);
-  }
-}
-
-void showMenu() {
-  display.clearDisplay();
-  display.setTextSize(1);
-
-  for (int i = 0; i < 3; i++) {
-    display.setCursor(0, i * 10);
-
-    if (i == selectedExercise) {
-      display.print("> ");
-    } else {
-      display.print("  ");
+    if (digitalRead(BTN_NEXT) == LOW) {
+      page = (page + 1) % 3;
+      lastPress = millis();
     }
 
-    display.println(exercises[i]);
+    if (digitalRead(BTN_PREV) == LOW) {
+      page = (page - 1 + 3) % 3;
+      lastPress = millis();
+    }
+
+    if (digitalRead(BTN_ACTION) == LOW) {
+      lastPress = millis();
+
+      if (page == 0) {
+        reps = 0;
+        workoutStart = millis();
+        workoutActive = true;
+        page = 2;
+      }
+    }
   }
 
-  display.display();
-}
-
-
-void handleGrace() {
-  display.clearDisplay();
-  display.setTextSize(2);
-  display.setCursor(0, 20);
-  display.println("GET READY");
-  display.display();
-
-  if (millis() - graceStart > 5000) {
-    digitalWrite(VIB_PIN, HIGH);
-    delay(300);
-    digitalWrite(VIB_PIN, LOW);
-
-    currentSystemState = WORKOUT;
-  }
-}
-
-void handleWorkout() {
-
-  float ax, ay, az;
-
+  // -------- IMU --------
   if (IMU.accelerationAvailable()) {
     IMU.readAcceleration(ax, ay, az);
+    zFiltered = 0.8 * zFiltered + 0.2 * az;
   }
 
-  float accelZ = az;
-  accelZFiltered = 0.8 * accelZFiltered + 0.2 * accelZ;
+  // -------- REP COUNT --------
+  if (workoutActive) {
 
-  unsigned long currentTime = millis();
+    unsigned long now = millis();
 
-  switch (repState) {
+    switch (repState) {
 
-    case IDLE:
-      if (accelZFiltered < 0.9) {
-        repState = GOING_DOWN;
-      }
-      break;
+      case IDLE:
+        if (zFiltered < 0.9) repState = DOWN;
+        break;
 
-    case GOING_DOWN:
-      if (accelZFiltered > 1.15) {
-        repState = GOING_UP;
-      }
-      break;
+      case DOWN:
+        if (zFiltered > 1.15) repState = UP;
+        break;
 
-    case GOING_UP:
-      if (accelZFiltered > 1.05) {
-        if (currentTime - lastRepTime > minRepDelay) {
-          repCount++;
-          lastRepTime = currentTime;
+      case UP:
+        if (zFiltered > 1.05 && now - lastRepTime > repDelay) {
+          reps++;
+          lastRepTime = now;
+          repState = IDLE;
         }
-        repState = IDLE;
-      }
-      break;
+        break;
+    }
   }
 
-  display.clearDisplay();
-  display.setTextSize(2);
-  display.setCursor(0, 0);
-  display.println("REPS");
+  drawPage();
+  delay(50);
+}
 
-  display.setTextSize(3);
-  display.setCursor(0, 25);
-  display.println(repCount);
+// ---------------- DRAW ----------------
+void drawPage() {
+
+  display.clearDisplay();
+  display.setTextColor(SSD1306_WHITE);
+
+  if (page == 0) {
+    display.setTextSize(1);
+    display.setCursor(0, 0);
+    display.println("MENU");
+    display.println("Press ACTION to start");
+  }
+
+  else if (page == 1) {
+    display.setTextSize(1);
+    display.setCursor(0, 0);
+    display.println("IMU DEBUG");
+
+    display.print("Z: ");
+    display.println(zFiltered, 2);
+  }
+
+  else if (page == 2) {
+
+    display.setTextSize(2);
+    display.setCursor(0, 0);
+    display.println("REPS");
+
+    display.setTextSize(3);
+    display.setCursor(0, 24);
+    display.println(reps);
+
+    display.setTextSize(1);
+    display.setCursor(80, 0);
+
+    if (workoutActive) {
+      int seconds = (millis() - workoutStart) / 1000;
+      display.print(seconds);
+      display.print("s");
+    }
+  }
 
   display.display();
 }
-
-
-void handleRest() {
-
-  int remaining = 120000 - (millis() - restStart);
-
-  display.clearDisplay();
-  display.setTextSize(2);
-  display.setCursor(0, 0);
-  display.println("REST");
-
-  display.setTextSize(2);
-  display.setCursor(0, 30);
-  display.println(remaining / 1000);
-
-  display.display();
-
-  if (remaining <= 0) {
-    digitalWrite(VIB_PIN, HIGH);
-    delay(500);
-    digitalWrite(VIB_PIN, LOW);
-
-    currentSystemState = MENU;
-  }
-}
-
-
